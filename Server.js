@@ -18,6 +18,7 @@ var checkPort = function (port, host, callback) {
         status = 'closed';
         socket.destroy();
     });
+
     socket.on('error', function (exception) {
         status = 'closed';
     });
