@@ -1,0 +1,17 @@
+{
+  "name": "security",
+  "version": "1.0.0",
+  "description": "Project For Security Class Consist A RESTful Service",
+  "main": "Server.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "Security"
+  ],
+  "author": "Mobin Vahdati, Homa Habashi, Hojat Sargolzehi",
+  "license": "ISC",
+  "dependencies": {
+    "express": "^4.17.1"
+  }
+}
