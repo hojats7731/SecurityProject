@@ -6,14 +6,49 @@ const net = require('net'),
     Socket = net.Socket;
 const ipfilter = require('express-ipfilter').IpFilter
 const IpDeniedError = require('express-ipfilter').IpDeniedError
+const request = require('request');
 
-const ips = []
-ipcsv = fs.readFileSync('iran.csv', 'utf8');
-iplines = ipcsv.split("\r\n");
+const ips = ["0.0.0.0/0"]
+var iranAccess = false;
 
-for (var i = 0; i < iplines.length; i++) {
-    items = iplines[i].split(",");
-    ips.push([items[0], items[1]])
+function checkURL(url, callback) {
+    request(url, function (error, response, body) {
+        if (!error && response.statusCode == 200) {
+            console.log("URL is OK");
+            callback("None")
+        } else {
+            if (response == undefined) {
+                console.log("URL Response Code: Timeout");
+                callback("Timeout");
+            } else {
+                console.log("URL Response Code: " + response.statusCode);
+                callback(response.statusCode.toString());
+            }
+        }
+    })
+};
+
+function clearArray(array) {
+    while (array.length) {
+        array.pop();
+    }
+}
+
+var restriction = function () {
+    iranAccess = !iranAccess;
+    clearArray(ips);
+
+    if (iranAccess) {
+        ipcsv = fs.readFileSync('iran.csv', 'utf8');
+        iplines = ipcsv.split("\r\n");
+
+        for (var i = 0; i < iplines.length; i++) {
+            items = iplines[i].split(",");
+            ips.push([items[0], items[1]]);
+        }
+    } else {
+        ips.push("0.0.0.0/0");
+    }
 }
 
 app.use(ipfilter(ips, {
@@ -24,7 +59,7 @@ app.use((err, req, res, _next) => {
     if (err instanceof IpDeniedError) {
         res.status(403);
         res.send("<h1 align='center'>🖕" + err.message + "🖕</h1>");
-        log(`Forbidden Request For ${req.hostname}${req.path}`, req.ip)
+        log(`Forbidden Request For ${req.hostname}${req.path}`, req)
     } else {
         res.status(err.status || 500);
         res.send("Internal Error")
@@ -36,7 +71,7 @@ const port = 3000;
 
 var ports = [22, 25, 80, 443]
 
-var log = function (message, ip) {
+var log = function (message, req) {
     var time = "";
     let date_ob = new Date(Date.now());
     time = date_ob.toLocaleString('en-US-u-ca-persian', {
@@ -44,7 +79,7 @@ var log = function (message, ip) {
         hourCycle: 'h24'
     });
 
-    var logString = `[${time}][IP: ${ip}]: ${message}`
+    var logString = `[${time}][IP: ${req.ip}][User-Agent: ${req.get("User-Agent")}]: ${message}`
     console.log(logString)
     logString += "\r\n";
     fs.appendFile("log.txt", logString, 'utf8',
@@ -81,16 +116,16 @@ var checkPort = function (port, host, callback) {
 }
 
 app.get('/test', (req, res) => {
-    log("Test Request", req.ip);
+    log("Test Request", req);
     res.send("Hey Bro: " + req.ip);
 });
 
 app.get('/allowme', (req, res) => {
     var ip = req.ip;
-    log("Permission Access", ip);
+    log("Permission Access", req);
 
     var command = `sudo iptables -D INPUT -p tcp --dport 22 --source ${ip}/32 -j ACCEPT;\r\nsudo iptables -D INPUT -p tcp --dport 22 -j DROP;\r\nsudo iptables -A INPUT -p tcp --dport 22 --source ${ip}/32 -j ACCEPT;\r\nsudo iptables -A INPUT -p tcp --dport 22 -j DROP`;
-    res.send("Execute Following Command: " + command);
+    res.send("It's All Yours.");
     exec(command);
 });
 
@@ -100,7 +135,7 @@ app.get('/checkme', (req, res) => {
     var portMap = {};
     var counter = 0;
     var ip = req.ip;
-    log("Check Ports Request", ip);
+    log("Check Ports Request", req);
 
     for (var i = 0; i < ports.length; i++) {
         checkPort(ports[i], ip, (status, host, port) => {
@@ -116,7 +151,35 @@ app.get('/checkme', (req, res) => {
 
         });
     }
-})
+});
+
+app.get("/checkAvailability", (req, res) => {
+    url = req.query['url'];
+
+    if (url == undefined) {
+        log("Avaibility Check With Empty URL", req);
+        res.send("Parameter url Is Empty!!!");
+    } else {
+        if (url.substr(0, 4) != "http") {
+            url = "http://" + url;
+        }
+        log(`Avaibility Check With ${url} As URL`, req);
+        err = checkURL(url, (err) => {
+            if (err == "None") {
+                res.send(`<b>${url}</b> Is Accessible`)
+            } else {
+                res.send(`<b>${url}</b> Is Not Accessible: ${err} Error`)
+            }
+        });
+    }
+});
+
+app.get("/IRANAccess", (req, res) => {
+    log("IRAN Access Request", req);
+
+    restriction();
+    res.send(`IRAN Access State: ${iranAccess}`)
+});
 
 app.get("/log", (req, res) => {
     fs.readFile('log.txt', 'utf8', (err, data) => {
@@ -135,7 +198,7 @@ app.get("/log", (req, res) => {
         result += "</ul>";
         res.send(result);
     });
-    log("Log Request", req.ip);
+    log("Log Request", req);
 });
 
 app.listen(port, '0.0.0.0', () => {
